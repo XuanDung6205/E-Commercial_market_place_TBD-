@@ -1,10 +1,5 @@
-﻿import { Text, View } from 'react-native';
+import { Redirect } from 'expo-router';
 
 export default function Screen() {
-  return (
-    <View>
-      <Text>index.tsx</Text>
-    </View>
-  );
+  return <Redirect href="/login" />;
 }
-

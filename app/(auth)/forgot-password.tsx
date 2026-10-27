@@ -1,10 +1,5 @@
-﻿import { Text, View } from 'react-native';
+import { ForgotPasswordScreen } from '@/src/components/auth/AuthScreens';
 
 export default function Screen() {
-  return (
-    <View>
-      <Text>forgot-password.tsx</Text>
-    </View>
-  );
+  return <ForgotPasswordScreen />;
 }
-
