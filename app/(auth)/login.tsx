@@ -1,5 +1,1 @@
-import { LoginScreen } from '@/src/components/auth/AuthScreens';
-
-export default function Screen() {
-  return <LoginScreen />;
-}
+export { default } from '@/src/components/auth/LoginScreen';
