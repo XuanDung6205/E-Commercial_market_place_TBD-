@@ -1,6 +1,7 @@
-import { Link, router } from "expo-router";
 import * as Linking from "expo-linking";
+import { Link, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -14,7 +15,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as WebBrowser from "expo-web-browser";
 
 import EyeOffIcon from "@/assets/images/figma/auth-login/eye-off.svg";
 import PlusIcon from "@/assets/images/figma/auth-login/plus.svg";
@@ -61,7 +61,7 @@ export default function LoginScreen() {
       const { error } = await signInWithEmail(normalizedEmail, password);
       if (error) {
         setErrorMessage(
-          "Email hoặc mật khẩu chưa chính xác. Vui lòng thử lại.",
+          error.message,
         );
         return;
       }
@@ -160,124 +160,124 @@ export default function LoginScreen() {
 
           <View style={styles.formCard}>
             <View style={styles.form}>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                accessibilityLabel="Email"
-                autoCapitalize="none"
-                autoComplete="email"
-                autoCorrect={false}
-                keyboardType="email-address"
-                onChangeText={setEmail}
-                onSubmitEditing={handleLogin}
-                placeholder="Nhập địa chỉ email"
-                placeholderTextColor={colors.muted}
-                returnKeyType="next"
-                style={styles.input}
-                textContentType="emailAddress"
-                value={email}
-              />
-            </View>
-
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Mật khẩu</Text>
-              <View style={styles.passwordInputWrap}>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Email</Text>
                 <TextInput
-                  accessibilityLabel="Mật khẩu"
+                  accessibilityLabel="Email"
                   autoCapitalize="none"
-                  autoComplete="password"
-                  onChangeText={setPassword}
+                  autoComplete="email"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  onChangeText={setEmail}
                   onSubmitEditing={handleLogin}
-                  placeholder="Nhập mật khẩu"
+                  placeholder="Nhập địa chỉ email"
                   placeholderTextColor={colors.muted}
-                  returnKeyType="done"
-                  secureTextEntry
-                  style={[styles.input, styles.passwordInput]}
-                  textContentType="password"
-                  value={password}
+                  returnKeyType="next"
+                  style={styles.input}
+                  textContentType="emailAddress"
+                  value={email}
                 />
-                <View accessible={false} style={styles.passwordIcon}>
-                  <EyeOffIcon width={18} height={18} />
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Mật khẩu</Text>
+                <View style={styles.passwordInputWrap}>
+                  <TextInput
+                    accessibilityLabel="Mật khẩu"
+                    autoCapitalize="none"
+                    autoComplete="password"
+                    onChangeText={setPassword}
+                    onSubmitEditing={handleLogin}
+                    placeholder="Nhập mật khẩu"
+                    placeholderTextColor={colors.muted}
+                    returnKeyType="done"
+                    secureTextEntry
+                    style={[styles.input, styles.passwordInput]}
+                    textContentType="password"
+                    value={password}
+                  />
+                  <View accessible={false} style={styles.passwordIcon}>
+                    <EyeOffIcon width={18} height={18} />
+                  </View>
                 </View>
               </View>
-            </View>
 
-            <View style={styles.forgotPasswordRow}>
-              <Link href="/(auth)/forgot-password" asChild>
-                <Pressable accessibilityRole="link" hitSlop={8}>
-                  <Text style={styles.forgotPassword}>Quên mật khẩu?</Text>
+              <View style={styles.forgotPasswordRow}>
+                <Link href="/(auth)/forgot-password" asChild>
+                  <Pressable accessibilityRole="link" hitSlop={8}>
+                    <Text style={styles.forgotPassword}>Quên mật khẩu?</Text>
+                  </Pressable>
+                </Link>
+              </View>
+
+              {errorMessage ? (
+                <Text accessibilityRole="alert" style={styles.errorMessage}>
+                  {errorMessage}
+                </Text>
+              ) : null}
+
+              <Pressable
+                accessibilityRole="button"
+                disabled={isSubmitting || socialProvider !== null}
+                onPress={handleLogin}
+                style={({ pressed }) => [
+                  styles.submitButton,
+                  pressed && !isSubmitting ? styles.submitButtonPressed : null,
+                  isSubmitting ? styles.submitButtonDisabled : null,
+                ]}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <Text style={styles.submitButtonText}>Đăng nhập</Text>
+                )}
+              </Pressable>
+
+              <View style={styles.socialDivider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>Hoặc đăng nhập với</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <View style={styles.socialButtons}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Đăng nhập bằng Google"
+                  disabled={isSubmitting || socialProvider !== null}
+                  onPress={() => handleSocialLogin("google")}
+                  style={({ pressed }) => [
+                    styles.socialButton,
+                    pressed && styles.socialButtonPressed,
+                    (isSubmitting || socialProvider !== null) && styles.socialButtonDisabled,
+                  ]}
+                >
+                  {socialProvider === "google" ? (
+                    <ActivityIndicator color="#4285F4" size="small" />
+                  ) : (
+                    <Text style={styles.googleMark}>G</Text>
+                  )}
+                  <Text style={styles.socialButtonText}>Google</Text>
                 </Pressable>
-              </Link>
-            </View>
 
-            {errorMessage ? (
-              <Text accessibilityRole="alert" style={styles.errorMessage}>
-                {errorMessage}
-              </Text>
-            ) : null}
-
-            <Pressable
-              accessibilityRole="button"
-              disabled={isSubmitting || socialProvider !== null}
-              onPress={handleLogin}
-              style={({ pressed }) => [
-                styles.submitButton,
-                pressed && !isSubmitting ? styles.submitButtonPressed : null,
-                isSubmitting ? styles.submitButtonDisabled : null,
-              ]}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.submitButtonText}>Đăng nhập</Text>
-              )}
-            </Pressable>
-
-            <View style={styles.socialDivider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>Hoặc đăng nhập với</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <View style={styles.socialButtons}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Đăng nhập bằng Google"
-                disabled={isSubmitting || socialProvider !== null}
-                onPress={() => handleSocialLogin("google")}
-                style={({ pressed }) => [
-                  styles.socialButton,
-                  pressed && styles.socialButtonPressed,
-                  (isSubmitting || socialProvider !== null) && styles.socialButtonDisabled,
-                ]}
-              >
-                {socialProvider === "google" ? (
-                  <ActivityIndicator color="#4285F4" size="small" />
-                ) : (
-                  <Text style={styles.googleMark}>G</Text>
-                )}
-                <Text style={styles.socialButtonText}>Google</Text>
-              </Pressable>
-
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Đăng nhập bằng Facebook"
-                disabled={isSubmitting || socialProvider !== null}
-                onPress={() => handleSocialLogin("facebook")}
-                style={({ pressed }) => [
-                  styles.socialButton,
-                  pressed && styles.socialButtonPressed,
-                  (isSubmitting || socialProvider !== null) && styles.socialButtonDisabled,
-                ]}
-              >
-                {socialProvider === "facebook" ? (
-                  <ActivityIndicator color="#1877F2" size="small" />
-                ) : (
-                  <Text style={styles.facebookMark}>f</Text>
-                )}
-                <Text style={styles.socialButtonText}>Facebook</Text>
-              </Pressable>
-            </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Đăng nhập bằng Facebook"
+                  disabled={isSubmitting || socialProvider !== null}
+                  onPress={() => handleSocialLogin("facebook")}
+                  style={({ pressed }) => [
+                    styles.socialButton,
+                    pressed && styles.socialButtonPressed,
+                    (isSubmitting || socialProvider !== null) && styles.socialButtonDisabled,
+                  ]}
+                >
+                  {socialProvider === "facebook" ? (
+                    <ActivityIndicator color="#1877F2" size="small" />
+                  ) : (
+                    <Text style={styles.facebookMark}>f</Text>
+                  )}
+                  <Text style={styles.socialButtonText}>Facebook</Text>
+                </Pressable>
+              </View>
 
             </View>
           </View>

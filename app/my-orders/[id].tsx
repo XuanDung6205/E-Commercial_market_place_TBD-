@@ -1,41 +1,694 @@
-import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { C, currency, EmptyState, Header, Icon, LoadingState, Page } from '@/src/components/customer/CustomerUI';
-import { supabase } from '@/src/services/supabase';
+import { useState } from 'react';
+import {
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { SymbolView } from 'expo-symbols';
+import { colors } from '@/src/constants/colors';
+import { formatCurrency } from '@/src/utils/formatCurrency';
+import { useOrders } from '@/src/store/marketplaceStore';
+import { OrderStatus } from '@/src/types/models';
 
-type Item = { id: string; product_id?: string | null; product_name: string; variant_label?: string | null; unit_price: number; quantity: number; line_total: number };
-type Order = { id: string; order_number: string; status: string; payment_method: string; payment_status: string; subtotal: number; discount_amount: number; shipping_fee: number; total_amount: number; recipient_name: string; recipient_phone: string; delivery_address: string; created_at: string; order_items: Item[] };
-const labels: Record<string, string> = { pending: 'Chờ xác nhận', confirmed: 'Đã xác nhận', processing: 'Đang xử lý', shipped: 'Đang giao', delivered: 'Đã giao', cancelled: 'Đã hủy' };
-const steps = [{ id: 'pending', text: 'Đặt hàng' }, { id: 'confirmed', text: 'Xác nhận' }, { id: 'shipped', text: 'Đang giao' }, { id: 'delivered', text: 'Đã giao' }];
+const STEPS = [
+  { id: 'pending', label: 'Đã đặt' },
+  { id: 'confirmed', label: 'Đã xác nhận' },
+  { id: 'shipped', label: 'Đang giao' },
+  { id: 'delivered', label: 'Đã giao' },
+];
 
 export default function OrderDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>(); const [order, setOrder] = useState<Order | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true); setError('');
-    const { data, error: queryError } = await supabase.from('orders').select('*, order_items(*)').eq('id', id).maybeSingle();
-    if (queryError) setError('Không thể tải chi tiết đơn hàng.');
-    setOrder(data as Order | null); setLoading(false);
-  }, [id]);
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
-  const cancel = () => Alert.alert('Hủy đơn hàng?', 'Bạn có chắc muốn hủy đơn hàng này không?', [{ text: 'Để sau', style: 'cancel' }, { text: 'Hủy đơn', style: 'destructive', onPress: () => { void (async () => { setBusy(true); const { error: updateError } = await supabase.from('orders').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', String(id)).eq('status', 'pending'); setBusy(false); if (updateError) Alert.alert('Chưa thể hủy đơn', updateError.message); else await load(); })(); } }]);
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { getOrderById, cancelOrder } = useOrders();
+  const order = getOrderById(id || '');
 
-  if (loading) return <Page><Header title="Chi tiết đơn hàng" back={() => router.back()} /><LoadingState /></Page>;
-  if (!order) return <Page><Header title="Chi tiết đơn hàng" back={() => router.back()} /><EmptyState title="Không tìm thấy đơn hàng" detail={error || 'Đơn hàng không tồn tại hoặc bạn không có quyền xem.'} /></Page>;
-  const statusIndex = steps.findIndex(step => step.id === order.status);
-  const paymentLabel = order.payment_method === 'cod' ? 'Thanh toán khi nhận hàng' : order.payment_method === 'bank_transfer' ? 'Chuyển khoản ngân hàng' : 'Ví điện tử';
-  return <Page>
-    <Header title="Chi tiết đơn hàng" back={() => router.back()} />
-    <View style={styles.orderTitle}><View><Text style={styles.number}>#{order.order_number}</Text><Text style={styles.date}>Đặt ngày {new Date(order.created_at).toLocaleDateString('vi-VN')}</Text></View><Text style={[styles.status, order.status === 'cancelled' ? styles.cancelStatus : styles.normalStatus]}>{labels[order.status] ?? order.status}</Text></View>
-    {order.status !== 'cancelled' ? <View style={styles.timeline}>{steps.map((step, i) => { const done = statusIndex >= i; return <View key={step.id} style={styles.step}><View style={[styles.dot, done && styles.dotDone]}>{done ? <Icon name="check" size={15} color="#fff" /> : null}</View>{i < steps.length - 1 ? <View style={[styles.connector, statusIndex > i && styles.connectorDone]} /> : null}<Text style={[styles.stepText, done && styles.stepTextDone]}>{step.text}</Text></View>; })}</View> : null}
-    <View style={styles.section}><Text style={styles.sectionTitle}>Địa chỉ nhận hàng</Text><View style={styles.address}><Icon name="pin" size={19} color={C.cyan} /><View style={styles.addressText}><Text style={styles.recipient}>{order.recipient_name} · {order.recipient_phone}</Text><Text style={styles.detailText}>{order.delivery_address}</Text></View></View></View>
-    <View style={styles.section}><Text style={styles.sectionTitle}>Sản phẩm ({order.order_items?.length ?? 0})</Text>{order.order_items?.map(item => <View key={item.id} style={styles.item}><View style={styles.itemImage}><Icon name="package" color={C.cyan} size={22} /></View><View style={styles.itemCopy}><Text style={styles.itemName}>{item.product_name}</Text>{item.variant_label ? <Text style={styles.variant}>{item.variant_label}</Text> : null}<Text style={styles.variant}>SL: {item.quantity}</Text></View><Text style={styles.itemPrice}>{currency(item.line_total)}</Text></View>)}</View>
-    <View style={styles.section}><Text style={styles.sectionTitle}>Tóm tắt đơn hàng</Text><Summary label="Tạm tính" value={currency(order.subtotal)} /><Summary label="Giảm giá" value={`-${currency(order.discount_amount)}`} /><Summary label="Phí vận chuyển" value={currency(order.shipping_fee)} /><View style={styles.totalRow}><Text style={styles.totalLabel}>Tổng thanh toán</Text><Text style={styles.totalValue}>{currency(order.total_amount)}</Text></View></View>
-    <View style={styles.payment}><Icon name="card" color={C.cyan} size={18} /><Text style={styles.paymentText}>{paymentLabel} · {order.payment_status === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}</Text></View>
-    {order.status === 'pending' ? <Pressable disabled={busy} onPress={cancel} style={[styles.cancelButton, busy && { opacity: 0.5 }]}><Text style={styles.cancelText}>{busy ? 'Đang xử lý...' : 'Hủy đơn hàng'}</Text></Pressable> : null}
-    {order.status === 'delivered' && order.order_items?.[0]?.product_id ? <Pressable onPress={() => router.push(`/product/${order.order_items[0].product_id}/reviews`)} style={styles.rateButton}><Icon name="star" color={C.red} size={16} /><Text style={styles.rateText}>Đánh giá sản phẩm</Text></Pressable> : null}
-  </Page>;
+  const [cancelling, setCancelling] = useState(false);
+
+  if (!order) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <StatusBar style="dark" />
+        <View style={styles.header}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quay lại"
+            hitSlop={12}
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <SymbolView
+              name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
+              tintColor={colors.ink}
+              size={22}
+            />
+          </Pressable>
+          <Text style={styles.headerTitle}>Chi tiết đơn hàng</Text>
+          <View style={styles.headerPlaceholder} />
+        </View>
+        <View style={styles.notFoundContainer}>
+          <Text style={styles.notFoundTitle}>Không tìm thấy đơn hàng</Text>
+          <Text style={styles.notFoundText}>
+            Đơn hàng #{id} không tồn tại hoặc đã bị xóa.
+          </Text>
+          <Pressable onPress={() => router.replace('/my-orders')} style={styles.backLinkBtn}>
+            <Text style={styles.backLinkText}>Quay lại danh sách</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const getStepProgressIndex = (status: OrderStatus): number => {
+    switch (status) {
+      case 'pending':
+        return 0; // Đã đặt
+      case 'confirmed':
+        return 1; // Đã xác nhận
+      case 'shipped':
+        return 2; // Đang giao
+      case 'delivered':
+        return 3; // Đã giao
+      case 'cancelled':
+        return -1;
+    }
+  };
+
+  const progressIndex = getStepProgressIndex(order.status);
+
+  const handleCancelOrder = () => {
+    Alert.alert('Hủy đơn hàng', 'Bạn có chắc chắn muốn hủy đơn hàng này không?', [
+      { text: 'Không', style: 'cancel' },
+      {
+        text: 'Hủy đơn',
+        style: 'destructive',
+        onPress: () => {
+          setCancelling(true);
+          setTimeout(() => {
+            cancelOrder(order.id);
+            setCancelling(false);
+            Alert.alert('Thành công', 'Đơn hàng của bạn đã được hủy.');
+          }, 300);
+        },
+      },
+    ]);
+  };
+
+  const renderStatusBadge = (status: OrderStatus) => {
+    switch (status) {
+      case 'pending':
+        return (
+          <View style={[styles.badge, styles.badgePending]}>
+            <Text style={[styles.badgeText, styles.badgeTextPending]}>Chờ xác nhận</Text>
+          </View>
+        );
+      case 'confirmed':
+      case 'shipped':
+        return (
+          <View style={[styles.badge, styles.badgeShipped]}>
+            <Text style={[styles.badgeText, styles.badgeTextShipped]}>Đang giao</Text>
+          </View>
+        );
+      case 'delivered':
+        return (
+          <View style={[styles.badge, styles.badgeDelivered]}>
+            <Text style={[styles.badgeText, styles.badgeTextDelivered]}>Đã giao</Text>
+          </View>
+        );
+      case 'cancelled':
+        return (
+          <View style={[styles.badge, styles.badgeCancelled]}>
+            <Text style={[styles.badgeText, styles.badgeTextCancelled]}>Đã hủy</Text>
+          </View>
+        );
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar style="dark" />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Quay lại"
+          hitSlop={12}
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
+          <SymbolView
+            name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
+            tintColor={colors.ink}
+            size={22}
+          />
+        </Pressable>
+        <Text style={styles.headerTitle}>Chi tiết đơn hàng</Text>
+        <View style={styles.headerPlaceholder} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Order Title & Badge matching Figma */}
+        <View style={styles.orderHeadCard}>
+          <View style={styles.orderHeadRow}>
+            <Text style={styles.orderTitle}>Đơn hàng #{order.orderNumber}</Text>
+            {renderStatusBadge(order.status)}
+          </View>
+          <Text style={styles.orderSubtitle}>
+            {order.status === 'delivered' && order.receivedTime
+              ? `Đã nhận lúc ${order.receivedTime}`
+              : `Đặt lúc ${order.time ? `${order.time} · ` : ''}${order.date}`}
+          </Text>
+
+          {/* Timeline Steps matching Figma */}
+          {order.status !== 'cancelled' ? (
+            <View style={styles.timelineWrap}>
+              <View style={styles.timelineSteps}>
+                {STEPS.map((step, idx) => {
+                  const isDone = progressIndex >= idx;
+                  const isLast = idx === STEPS.length - 1;
+
+                  return (
+                    <View key={step.id} style={styles.stepItem}>
+                      <View style={styles.dotRow}>
+                        <View style={[styles.stepCircle, isDone && styles.stepCircleActive]}>
+                          {isDone ? (
+                            <SymbolView
+                              name={{ ios: 'checkmark', android: 'check', web: 'check' }}
+                              tintColor={colors.white}
+                              size={12}
+                            />
+                          ) : (
+                            <View style={styles.stepDotInactive} />
+                          )}
+                        </View>
+                        {!isLast ? (
+                          <View
+                            style={[
+                              styles.stepConnector,
+                              progressIndex > idx && styles.stepConnectorActive,
+                            ]}
+                          />
+                        ) : null}
+                      </View>
+                      <Text
+                        style={[
+                          styles.stepLabel,
+                          isDone && styles.stepLabelActive,
+                        ]}
+                      >
+                        {step.label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Section: Địa chỉ giao hàng matching Figma */}
+        <View style={styles.sectionCard}>
+          <View style={styles.addressRow}>
+            <View style={styles.pinCircle}>
+              <SymbolView
+                name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }}
+                tintColor={colors.cyan}
+                size={18}
+              />
+            </View>
+            <View style={styles.addressContent}>
+              <Text style={styles.sectionHeading}>Địa chỉ giao hàng</Text>
+              <Text style={styles.recipientName}>
+                {order.recipientName} · {order.phone}
+              </Text>
+              <Text style={styles.addressText}>{order.address}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Section: Sản phẩm matching Figma */}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionHeading}>Sản phẩm ({order.items.length})</Text>
+          {order.items.map((item) => (
+            <View key={item.id} style={styles.itemRow}>
+              <Image source={{ uri: item.image }} style={styles.itemImage} resizeMode="cover" />
+              <View style={styles.itemDetails}>
+                <Text numberOfLines={1} style={styles.itemName}>
+                  {item.productName}
+                </Text>
+                <Text style={styles.itemMeta}>
+                  {item.variant ? `${item.variant} · ` : ''}Số lượng: {item.quantity}
+                </Text>
+                <Text style={styles.itemPrice}>{formatCurrency(item.price)}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* Section: Chi tiết thanh toán matching Figma */}
+        <View style={styles.sectionCard}>
+          <View style={styles.priceRow}>
+            <Text style={styles.priceLabel}>Tạm tính</Text>
+            <Text style={styles.priceValue}>{formatCurrency(order.subtotal)}</Text>
+          </View>
+          <View style={styles.priceRow}>
+            <Text style={styles.priceLabel}>Thuế (10%)</Text>
+            <Text style={styles.priceValue}>{formatCurrency(order.tax)}</Text>
+          </View>
+          <View style={styles.priceRow}>
+            <Text style={styles.priceLabel}>Phí vận chuyển</Text>
+            <Text style={styles.priceValue}>{formatCurrency(order.shippingFee)}</Text>
+          </View>
+          {order.discount > 0 ? (
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>Giảm giá</Text>
+              <Text style={[styles.priceValue, styles.discountValue]}>
+                -{formatCurrency(order.discount)}
+              </Text>
+            </View>
+          ) : null}
+          <View style={[styles.priceRow, styles.totalRow]}>
+            <Text style={styles.totalLabel}>Tổng cộng</Text>
+            <Text style={styles.totalValue}>{formatCurrency(order.total)}</Text>
+          </View>
+        </View>
+
+        {/* Payment info bar matching Figma */}
+        <View style={styles.paymentCard}>
+          {order.isPaid || order.status === 'delivered' ? (
+            <View style={styles.paymentContentRow}>
+              <SymbolView
+                name={{ ios: 'checkmark.circle', android: 'check_circle', web: 'check_circle' }}
+                tintColor={colors.success}
+                size={18}
+              />
+              <Text style={styles.paymentSuccessText}>Đã thanh toán khi nhận hàng</Text>
+            </View>
+          ) : (
+            <View style={styles.paymentContentRow}>
+              <SymbolView
+                name={{ ios: 'creditcard', android: 'credit_card', web: 'credit_card' }}
+                tintColor={colors.muted}
+                size={18}
+              />
+              <Text style={styles.paymentPendingText}>
+                {order.paymentMethod === 'cod'
+                  ? 'Thanh toán khi nhận hàng (COD)'
+                  : order.paymentMethod === 'bank_transfer'
+                  ? 'Chuyển khoản ngân hàng'
+                  : 'Ví điện tử'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Bottom Button matching Figma: Hủy đơn or ★ Đánh giá */}
+        {order.status === 'pending' ? (
+          <Pressable
+            accessibilityRole="button"
+            disabled={cancelling}
+            onPress={handleCancelOrder}
+            style={[styles.cancelBtn, cancelling && styles.cancelBtnDisabled]}
+          >
+            <Text style={styles.cancelBtnText}>
+              {cancelling ? 'Đang hủy đơn...' : 'Hủy đơn'}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {order.status === 'delivered' ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              const first = order.items[0];
+              router.push({
+                pathname: '/feedback',
+                params: {
+                  orderId: order.id,
+                  productId: first?.productId || '',
+                  productName: first?.productName || '',
+                  image: first?.image || '',
+                  variant: first?.variant || '',
+                },
+              });
+            }}
+            style={styles.reviewBtn}
+          >
+            <SymbolView
+              name={{ ios: 'star.fill', android: 'star', web: 'star' }}
+              tintColor={colors.white}
+              size={17}
+            />
+            <Text style={styles.reviewBtnText}>Đánh giá</Text>
+          </Pressable>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
-function Summary({ label, value }: { label: string; value: string }) { return <View style={styles.summary}><Text style={styles.summaryLabel}>{label}</Text><Text style={styles.summaryValue}>{value}</Text></View>; }
-const styles = StyleSheet.create({ orderTitle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }, number: { fontSize: 16, fontWeight: '700', color: C.ink }, date: { fontSize: 11, color: C.muted, marginTop: 5 }, status: { paddingVertical: 7, paddingHorizontal: 10, borderRadius: 16, overflow: 'hidden', fontSize: 11, fontWeight: '700' }, normalStatus: { color: '#A66300', backgroundColor: '#FFF3D8' }, cancelStatus: { color: C.red, backgroundColor: '#FCE9E8' }, timeline: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 8, marginBottom: 24 }, step: { width: '25%', alignItems: 'center' }, dot: { width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: C.line, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', zIndex: 1 }, dotDone: { backgroundColor: C.cyan, borderColor: C.cyan }, connector: { position: 'absolute', width: '100%', height: 2, backgroundColor: C.line, left: '50%', top: 12 }, connectorDone: { backgroundColor: C.cyan }, stepText: { color: C.muted, fontSize: 9, marginTop: 6 }, stepTextDone: { color: C.ink, fontWeight: '600' }, section: { borderTopColor: C.line, borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 16 }, sectionTitle: { fontSize: 14, color: C.ink, fontWeight: '700', marginBottom: 12 }, address: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }, addressText: { flex: 1 }, recipient: { fontSize: 13, color: C.ink, fontWeight: '600', marginBottom: 5 }, detailText: { color: C.muted, fontSize: 12, lineHeight: 18 }, item: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }, itemImage: { width: 55, height: 55, borderRadius: 7, backgroundColor: '#EFFBFC', alignItems: 'center', justifyContent: 'center' }, itemCopy: { flex: 1 }, itemName: { color: C.ink, fontSize: 12, fontWeight: '600' }, variant: { color: C.muted, fontSize: 10, marginTop: 4 }, itemPrice: { color: C.ink, fontSize: 12, fontWeight: '600' }, summary: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 }, summaryLabel: { color: C.muted, fontSize: 12 }, summaryValue: { color: C.ink, fontSize: 12 }, totalRow: { borderTopColor: C.line, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 7, paddingTop: 12, flexDirection: 'row', justifyContent: 'space-between' }, totalLabel: { fontSize: 13, fontWeight: '700', color: C.ink }, totalValue: { fontSize: 15, fontWeight: '700', color: C.red }, payment: { backgroundColor: C.soft, borderRadius: 8, padding: 12, flexDirection: 'row', gap: 9, alignItems: 'center' }, paymentText: { color: C.ink, fontSize: 12, flex: 1 }, cancelButton: { marginTop: 16, height: 46, alignItems: 'center', justifyContent: 'center', borderColor: C.red, borderWidth: 1, borderRadius: 7 }, cancelText: { color: C.red, fontSize: 14, fontWeight: '700' }, rateButton: { marginTop: 14, height: 46, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 7, borderColor: C.red, borderWidth: 1, borderRadius: 7 }, rateText: { color: C.red, fontSize: 14, fontWeight: '700' } });
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#F8FAFB',
+  },
+  header: {
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    backgroundColor: colors.white,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EDF1F3',
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  headerPlaceholder: {
+    width: 36,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  orderHeadCard: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#EDF1F3',
+  },
+  orderHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  orderTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  orderSubtitle: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  badgePending: {
+    backgroundColor: '#FEF6E7',
+  },
+  badgeTextPending: {
+    color: '#B57900',
+  },
+  badgeShipped: {
+    backgroundColor: colors.paleCyan,
+  },
+  badgeTextShipped: {
+    color: colors.cyan,
+  },
+  badgeDelivered: {
+    backgroundColor: '#E6F7ED',
+  },
+  badgeTextDelivered: {
+    color: '#12B76A',
+  },
+  badgeCancelled: {
+    backgroundColor: '#FEE4E2',
+  },
+  badgeTextCancelled: {
+    color: '#F04438',
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  timelineWrap: {
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  timelineSteps: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  stepItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  dotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    justifyContent: 'center',
+  },
+  stepCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#E4E7EC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  stepCircleActive: {
+    backgroundColor: colors.cyan,
+  },
+  stepDotInactive: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#B5BAC3',
+  },
+  stepConnector: {
+    position: 'absolute',
+    left: '50%',
+    width: '100%',
+    height: 2,
+    backgroundColor: '#E4E7EC',
+    zIndex: 1,
+  },
+  stepConnectorActive: {
+    backgroundColor: colors.cyan,
+  },
+  stepLabel: {
+    fontSize: 10,
+    color: colors.muted,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  stepLabelActive: {
+    color: colors.cyan,
+    fontWeight: '600',
+  },
+  sectionCard: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#EDF1F3',
+  },
+  sectionHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.ink,
+    marginBottom: 12,
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  pinCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.paleCyan,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addressContent: {
+    flex: 1,
+  },
+  recipientName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.ink,
+    marginBottom: 4,
+  },
+  addressText: {
+    fontSize: 12,
+    color: colors.muted,
+    lineHeight: 18,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  itemImage: {
+    width: 58,
+    height: 58,
+    borderRadius: 10,
+    backgroundColor: colors.softBg,
+    marginRight: 12,
+  },
+  itemDetails: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  itemMeta: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 3,
+  },
+  itemPrice: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.cyan,
+    marginTop: 4,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  priceLabel: {
+    fontSize: 13,
+    color: colors.muted,
+  },
+  priceValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  discountValue: {
+    color: colors.danger,
+  },
+  totalRow: {
+    marginTop: 6,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#F0F2F5',
+    marginBottom: 0,
+  },
+  totalLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  totalValue: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.cyan,
+  },
+  paymentCard: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#EDF1F3',
+  },
+  paymentContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  paymentSuccessText: {
+    fontSize: 13,
+    color: colors.success,
+    fontWeight: '600',
+  },
+  paymentPendingText: {
+    fontSize: 13,
+    color: colors.ink,
+    fontWeight: '500',
+  },
+  cancelBtn: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#F04438',
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelBtnDisabled: {
+    opacity: 0.6,
+  },
+  cancelBtnText: {
+    color: '#F04438',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  reviewBtn: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.cyan,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  reviewBtnText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  notFoundContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  notFoundTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.ink,
+    marginBottom: 8,
+  },
+  notFoundText: {
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  backLinkBtn: {
+    backgroundColor: colors.cyan,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  backLinkText: {
+    color: colors.white,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+});
